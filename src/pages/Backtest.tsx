@@ -7,11 +7,10 @@ import { createChart } from 'lightweight-charts';
 import { 
   Play, Save, Download, Settings, Activity, 
   TrendingUp, AlertCircle, RefreshCw, 
-  ChevronDown, Server, Coins 
+  Server, Coins
 } from 'lucide-react';
 import { runBacktest, PropFirmConfig } from '@/lib/backtestEngine';
 
-// ===================== DEFAULT PINE SCRIPT =====================
 const defaultPineCode = `//@version=6
 strategy("SMA Golden Cross", overlay=true)
 
@@ -30,7 +29,6 @@ if (ta.crossover(smaFast, smaSlow))
 if (ta.crossunder(smaFast, smaSlow))
     strategy.entry("Short", strategy.short)`;
 
-// ===================== DAFTAR EXCHANGE & ASET =====================
 const EXCHANGES = [
   { value: 'binance', label: '🟡 Binance' },
   { value: 'bybit', label: '🔵 Bybit' },
@@ -48,31 +46,23 @@ const SYMBOLS = [
   'ARB/USDT', 'OP/USDT', 'INJ/USDT', 'SUI/USDT'
 ];
 
-// ===================== MAIN COMPONENT =====================
 export default function Backtest() {
-  // State Editor
   const [pineCode, setPineCode] = useState(defaultPineCode);
-  
-  // State Exchange & Aset
   const [selectedExchange, setSelectedExchange] = useState('binance');
   const [selectedSymbol, setSelectedSymbol] = useState('BTC/USDT');
-  
-  // State Data & Loading
   const [marketData, setMarketData] = useState<any[]>([]);
   const [isFetching, setIsFetching] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   
-  // Chart Ref
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<any>(null);
 
-  // ===================== FETCH DATA DARI EXCHANGE =====================
   const fetchMarketData = async () => {
     setIsFetching(true);
     setError(null);
-    setResult(null); // Reset hasil lama
+    setResult(null);
     
     try {
       const response = await fetch('/.netlify/functions/fetch-data', {
@@ -107,13 +97,11 @@ export default function Backtest() {
     }
   };
 
-  // ===================== RUN BACKTEST =====================
   const handleRunBacktest = async () => {
-    // 1. Ambil data dulu jika belum ada atau force refresh
     let data = marketData;
     if (data.length === 0) {
       data = await fetchMarketData();
-      if (!data) return; // Jika gagal, stop
+      if (!data) return;
     }
 
     setIsLoading(true);
@@ -131,8 +119,6 @@ export default function Backtest() {
 
       const res = runBacktest(data, pineCode, config);
       setResult(res);
-
-      // Render Chart
       renderChart(data, res);
     } catch (err: any) {
       setError('Error backtest: ' + err.message);
@@ -141,7 +127,6 @@ export default function Backtest() {
     }
   };
 
-  // ===================== RENDER CHART =====================
   const renderChart = (data: any[], res: any) => {
     if (!chartContainerRef.current) return;
     if (chartRef.current) {
@@ -191,7 +176,6 @@ export default function Backtest() {
     chartRef.current = chart;
   };
 
-  // ===================== RESIZE CHART =====================
   useEffect(() => {
     const handleResize = () => {
       if (chartRef.current && chartContainerRef.current) {
@@ -202,27 +186,19 @@ export default function Backtest() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // ===================== AUTO-FETCH SAAT EXCHANGE/SYMBOL BERUBAH =====================
   useEffect(() => {
-    // Reset hasil ketika exchange/symbol berubah
     setResult(null);
     setMarketData([]);
     if (chartRef.current) {
       chartRef.current.remove();
       chartRef.current = null;
     }
-    // Opsional: auto fetch otomatis
-    // fetchMarketData(); 
-    // Saya nonaktifkan auto-fetch biar user klik tombol dulu, tapi bisa diaktifkan jika mau.
-    // Agar lebih user-friendly, kita fetch otomatis saat pertama kali load atau ganti.
     fetchMarketData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedExchange, selectedSymbol]);
 
-  // ===================== UI =====================
   return (
     <div className="h-[calc(100vh-64px)] flex flex-col p-4 gap-4 bg-background">
-      {/* ===== HEADER ===== */}
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">
           <h2 className="text-xl font-bold">🧪 Backtest Studio</h2>
@@ -249,7 +225,6 @@ export default function Backtest() {
         </div>
       </div>
 
-      {/* ===== ERROR ===== */}
       {error && (
         <Card className="border-l-4 border-danger bg-danger/10 p-3">
           <p className="text-danger text-sm flex items-center gap-2">
@@ -258,11 +233,8 @@ export default function Backtest() {
         </Card>
       )}
 
-      {/* ===== 3 PANEL ===== */}
       <div className="flex-1 grid grid-cols-12 gap-4 min-h-0">
-        {/* ===== LEFT: EDITOR ===== */}
         <div className="col-span-4 flex flex-col gap-3">
-          {/* Dropdown Exchange & Symbol */}
           <div className="flex gap-2">
             <div className="flex-1 relative">
               <select
@@ -294,13 +266,11 @@ export default function Backtest() {
               onClick={fetchMarketData}
               disabled={isFetching}
               className="px-3"
-              title="Refresh data dari exchange"
             >
               <RefreshCw size={16} className={isFetching ? 'animate-spin' : ''} />
             </Button>
           </div>
 
-          {/* Editor */}
           <Card className="flex-1 p-0 overflow-hidden">
             <Editor
               height="100%"
@@ -320,7 +290,6 @@ export default function Backtest() {
           </Card>
         </div>
 
-        {/* ===== MIDDLE: CHART ===== */}
         <div className="col-span-5 flex flex-col gap-4">
           <Card className="flex-1 p-0 overflow-hidden relative">
             <div ref={chartContainerRef} className="w-full h-full" />
@@ -342,7 +311,6 @@ export default function Backtest() {
               </div>
             )}
           </Card>
-          {/* Mini Equity */}
           <Card className="h-20 flex items-center justify-between px-4">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
@@ -362,7 +330,6 @@ export default function Backtest() {
           </Card>
         </div>
 
-        {/* ===== RIGHT: STATS ===== */}
         <div className="col-span-3 flex flex-col gap-4 overflow-y-auto">
           <Card>
             <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
@@ -421,9 +388,9 @@ export default function Backtest() {
                 </div>
               </Card>
               <Card className={`border-l-4 ${result.metrics.sharpe > 1 && result.metrics.winRate > 50 ? 'border-success' : 'border-warning'}`}>
-                <div className="flex items-center gap-2 text-success">
+                <div className="flex items-center gap-2">
                   <AlertCircle size={16} className={result.metrics.sharpe > 1 && result.metrics.winRate > 50 ? 'text-success' : 'text-warning'} />
-                  <span className="text-sm font-medium">
+                  <span className={`text-sm font-medium ${result.metrics.sharpe > 1 && result.metrics.winRate > 50 ? 'text-success' : 'text-warning'}`}>
                     {result.metrics.sharpe > 1 && result.metrics.winRate > 50 
                       ? '✅ Layak untuk forward test!' 
                       : '⚠️ Perlu optimasi lebih lanjut'}
