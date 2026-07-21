@@ -43,7 +43,6 @@ export function runBacktest(data: OHLCV[], pineCode: string, config: PropFirmCon
   let tradesToday = 0;
   let currentDay = '';
   let maxEquityDrawdown = 0;
-  let totalPnL = 0;
   let winCount = 0, lossCount = 0;
   let sumWin = 0, sumLoss = 0;
 
@@ -65,15 +64,15 @@ export function runBacktest(data: OHLCV[], pineCode: string, config: PropFirmCon
       if (dailyLoss / config.initialBalance >= config.dailyDrawdownPercent / 100) break;
       if (tradesToday >= config.maxTradesPerDay) break;
       
-      const riskAmount = equity * (config.riskPerTradePercent / 100);
-      const slDistance = candle.close * 0.01;
+      const slPercent = 0.01;
+      const tpPercent = 0.02;
       
       position = {
         type: signal === 'buy' ? 'long' : 'short',
         entryPrice: candle.close,
         entryTime: candle.time,
-        sl: signal === 'buy' ? candle.close * 0.99 : candle.close * 1.01,
-        tp: signal === 'buy' ? candle.close * 1.02 : candle.close * 0.98,
+        sl: signal === 'buy' ? candle.close * (1 - slPercent) : candle.close * (1 + slPercent),
+        tp: signal === 'buy' ? candle.close * (1 + tpPercent) : candle.close * (1 - tpPercent),
       };
     }
 
@@ -102,7 +101,6 @@ export function runBacktest(data: OHLCV[], pineCode: string, config: PropFirmCon
         const netPnl = pnlValue - fee;
 
         equity += netPnl;
-        totalPnL += netPnl;
         if (netPnl > 0) { winCount++; sumWin += netPnl; } else { lossCount++; sumLoss += netPnl; }
         if (netPnl < 0) dailyLoss += Math.abs(netPnl);
 
