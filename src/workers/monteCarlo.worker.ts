@@ -1,4 +1,3 @@
-// Placeholder untuk Monte Carlo (akan diisi nanti)
-self.onmessage = (event) => {
+self.onmessage = (_event: MessageEvent) => {
   self.postMessage({ status: 'ready' });
 };
