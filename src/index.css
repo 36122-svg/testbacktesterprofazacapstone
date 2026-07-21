@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-text font-sans antialiased;
+    overflow-x: hidden;
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-background;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-primary/30 rounded-full hover:bg-primary/50;
+  }
+  .glass {
+    @apply bg-surface/60 backdrop-blur-xl border border-white/5 shadow-2xl;
+  }
+  .glow-border {
+    @apply border border-primary/30 shadow-[0_0_15px_rgba(0,212,255,0.15)];
+  }
+}
