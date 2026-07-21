@@ -1,12 +1,17 @@
 import { Handler } from '@netlify/functions';
-import ccxt from 'ccxt';
 
-// Daftar exchange yang didukung
-const SUPPORTED_EXCHANGES = ['binance', 'bybit', 'bitget', 'kraken', 'coinbase', 'okx'];
+// Mapping exchange ke endpoint REST publik
+const EXCHANGE_ENDPOINTS: Record<string, string> = {
+  binance: 'https://api.binance.com/api/v3/klines',
+  bybit: 'https://api.bybit.com/v5/market/kline',
+  bitget: 'https://api.bitget.com/api/v2/spot/market/candles',
+  kraken: 'https://api.kraken.com/0/public/OHLC',
+  coinbase: 'https://api.exchange.coinbase.com/products/{symbol}/candles',
+  okx: 'https://www.okx.com/api/v5/market/candles',
+};
 
 export const handler: Handler = async (event) => {
   try {
-    // 1. Parse parameter dari request
     const { 
       exchange = 'binance', 
       symbol = 'BTC/USDT', 
@@ -14,57 +19,91 @@ export const handler: Handler = async (event) => {
       limit = 500 
     } = JSON.parse(event.body || '{}');
 
-    // 2. Validasi exchange
-    if (!SUPPORTED_EXCHANGES.includes(exchange)) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ 
-          success: false, 
-          error: `Exchange "${exchange}" tidak didukung. Pilih: ${SUPPORTED_EXCHANGES.join(', ')}` 
-        }),
-      };
+    let url = '';
+    let data = [];
+
+    // Binance
+    if (exchange === 'binance') {
+      const sym = symbol.replace('/', '').toUpperCase();
+      const interval = timeframe === '1h' ? '1h' : '1d';
+      url = `https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${interval}&limit=${limit}`;
+      const response = await fetch(url);
+      const json = await response.json();
+      if (!Array.isArray(json) || json.length === 0) throw new Error('No data from Binance');
+      data = json.map((candle: any[]) => ({
+        time: candle[0],
+        open: parseFloat(candle[1]),
+        high: parseFloat(candle[2]),
+        low: parseFloat(candle[3]),
+        close: parseFloat(candle[4]),
+      }));
+    } 
+    // Bybit
+    else if (exchange === 'bybit') {
+      const sym = symbol.replace('/', '');
+      const interval = timeframe === '1h' ? '60' : 'D';
+      url = `https://api.bybit.com/v5/market/kline?category=spot&symbol=${sym}&interval=${interval}&limit=${limit}`;
+      const response = await fetch(url);
+      const json = await response.json();
+      if (json.retCode !== 0 || !json.result?.list) throw new Error('No data from Bybit');
+      data = json.result.list.map((candle: string[]) => ({
+        time: parseInt(candle[0]),
+        open: parseFloat(candle[1]),
+        high: parseFloat(candle[2]),
+        low: parseFloat(candle[3]),
+        close: parseFloat(candle[4]),
+      }));
+    }
+    // Bitget
+    else if (exchange === 'bitget') {
+      const sym = symbol.replace('/', '');
+      const interval = timeframe === '1h' ? '1H' : '1D';
+      url = `https://api.bitget.com/api/v2/spot/market/candles?symbol=${sym}&granularity=${interval}&limit=${limit}`;
+      const response = await fetch(url);
+      const json = await response.json();
+      if (json.code !== '00000' || !json.data) throw new Error('No data from Bitget');
+      data = json.data.map((candle: any) => ({
+        time: parseInt(candle[0]),
+        open: parseFloat(candle[1]),
+        high: parseFloat(candle[2]),
+        low: parseFloat(candle[3]),
+        close: parseFloat(candle[4]),
+      }));
+    }
+    // Kraken
+    else if (exchange === 'kraken') {
+      const sym = symbol.replace('/', '');
+      const interval = timeframe === '1h' ? '60' : '1440';
+      url = `https://api.kraken.com/0/public/OHLC?pair=${sym}&interval=${interval}&since=${Date.now()/1000 - limit * 3600}`;
+      const response = await fetch(url);
+      const json = await response.json();
+      if (json.error && json.error.length) throw new Error(json.error.join(', '));
+      const result = json.result[Object.keys(json.result)[0]];
+      if (!Array.isArray(result)) throw new Error('No data from Kraken');
+      data = result.map((candle: any[]) => ({
+        time: candle[0] * 1000,
+        open: parseFloat(candle[1]),
+        high: parseFloat(candle[2]),
+        low: parseFloat(candle[3]),
+        close: parseFloat(candle[4]),
+      }));
+    }
+    // Fallback ke Binance untuk exchange lain
+    else {
+      const sym = symbol.replace('/', '').toUpperCase();
+      url = `https://api.binance.com/api/v3/klines?symbol=${sym}&interval=1h&limit=${limit}`;
+      const response = await fetch(url);
+      const json = await response.json();
+      if (!Array.isArray(json) || json.length === 0) throw new Error(`Exchange ${exchange} tidak didukung sementara, fallback ke Binance`);
+      data = json.map((candle: any[]) => ({
+        time: candle[0],
+        open: parseFloat(candle[1]),
+        high: parseFloat(candle[2]),
+        low: parseFloat(candle[3]),
+        close: parseFloat(candle[4]),
+      }));
     }
 
-    // 3. Inisialisasi exchange via CCXT (dinamis)
-    // @ts-ignore - CCXT mendukung dynamic instantiation
-    const ExchangeClass = ccxt[exchange];
-    if (!ExchangeClass) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ success: false, error: `CCXT tidak mengenali exchange "${exchange}"` }),
-      };
-    }
-
-    const exchangeInstance = new ExchangeClass({
-      enableRateLimit: true,
-      options: {
-        defaultType: 'spot', // Spot market
-      },
-    });
-
-    // 4. Fetch data OHLCV
-    const ohlcv = await exchangeInstance.fetchOHLCV(symbol, timeframe, undefined, limit);
-
-    if (!ohlcv || ohlcv.length === 0) {
-      return {
-        statusCode: 404,
-        body: JSON.stringify({ 
-          success: false, 
-          error: `Tidak ada data untuk ${symbol} di ${exchange}. Periksa simbol atau coba yang lain.` 
-        }),
-      };
-    }
-
-    // 5. Format data ke struktur yang kita butuhkan
-    const data = ohlcv.map(([time, open, high, low, close]) => ({
-      time,
-      open,
-      high,
-      low,
-      close,
-    }));
-
-    // 6. Return sukses
     return {
       statusCode: 200,
       body: JSON.stringify({
@@ -76,24 +115,13 @@ export const handler: Handler = async (event) => {
         data,
       }),
     };
-
   } catch (error: any) {
     console.error('fetch-data error:', error);
-
-    // Deteksi error spesifik dari CCXT
-    let errorMessage = error.message || 'Terjadi kesalahan internal';
-    
-    if (errorMessage.includes('symbol')) {
-      errorMessage = `Simbol "${JSON.parse(event.body || '{}').symbol || 'BTC/USDT'}" tidak ditemukan di exchange tersebut.`;
-    } else if (errorMessage.includes('rate limit')) {
-      errorMessage = 'Terlalu banyak request, coba lagi nanti. (Rate limit)';
-    }
-
     return {
       statusCode: 500,
       body: JSON.stringify({
         success: false,
-        error: errorMessage,
+        error: error.message || 'Terjadi kesalahan internal',
       }),
     };
   }
